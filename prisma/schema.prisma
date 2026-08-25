@@ -13,15 +13,26 @@ enum Role {
 }
 
 model User {
-  id        Int        @id @default(autoincrement())
-  name      String
-  email     String     @unique
-  password  String
-  role      Role       @default(USER)
-  products  Product[]
-  orders    Order[]
-  favorites Favorite[]
-  createdAt DateTime   @default(now())
+  id          Int           @id @default(autoincrement())
+  name        String
+  email       String        @unique
+  password    String
+  role        Role          @default(USER)
+  products    Product[]
+  orders      Order[]
+  favorites   Favorite[]
+  resetTokens ResetToken[]
+  createdAt   DateTime      @default(now())
+}
+
+model ResetToken {
+  id        Int      @id @default(autoincrement())
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Product {
