@@ -2,17 +2,35 @@ const prisma = require("../lib/prisma");
 const argon2 = require("argon2");
 const jwt = require("jsonwebtoken");
 
+const createToken = (user) => {
+  return jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "7d",
+    }
+  );
+};
+
 const register = async (req, res) => {
   try {
-    const {
-      name,
-      email,
-      password,
-    } = req.body;
+    const name = req.body.name?.trim();
+    const email = req.body.email?.trim().toLowerCase();
+    const password = req.body.password;
 
     if (!name || !email || !password) {
       return res.status(400).json({
         message: "Tous les champs sont obligatoires.",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        message: "Le mot de passe doit contenir au moins 6 caractères.",
       });
     }
 
@@ -46,8 +64,11 @@ const register = async (req, res) => {
       },
     });
 
+    const token = createToken(user);
+
     return res.status(201).json({
       message: "Compte créé avec succès.",
+      token,
       user,
     });
   } catch (error) {
@@ -61,10 +82,8 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const {
-      email,
-      password,
-    } = req.body;
+    const email = req.body.email?.trim().toLowerCase();
+    const password = req.body.password;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -84,10 +103,22 @@ const login = async (req, res) => {
       });
     }
 
-    const validPassword = await argon2.verify(
-      user.password,
-      password
-    );
+    let validPassword = false;
+
+    try {
+      validPassword = await argon2.verify(
+        user.password,
+        password
+      );
+    } catch (error) {
+      console.error(
+        `Mot de passe invalide en base pour l'utilisateur ${user.id}`
+      );
+
+      return res.status(401).json({
+        message: "Email ou mot de passe incorrect.",
+      });
+    }
 
     if (!validPassword) {
       return res.status(401).json({
@@ -95,17 +126,7 @@ const login = async (req, res) => {
       });
     }
 
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "7d",
-      }
-    );
+    const token = createToken(user);
 
     return res.status(200).json({
       message: "Connexion réussie.",
