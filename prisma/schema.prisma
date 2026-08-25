@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  name      String
+  email     String     @unique
+  password  String
+  role      Role       @default(USER)
+  products  Product[]
+  orders    Order[]
+  favorites Favorite[]
+  createdAt DateTime   @default(now())
+}
+
+model Product {
+  id          Int         @id @default(autoincrement())
+  title       String
+  description String
+  price       Float
+  category    String
+  condition   String
+  city        String
+  image       String?
+  createdAt   DateTime    @default(now())
+
+  userId      Int
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems  OrderItem[]
+  favorites   Favorite[]
+}
+
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  status          String      @default("PENDING")
+  total           Float
+  stripeSessionId String?     @unique
+  name            String
+  address         String
+  city            String
+  postalCode      String
+  phone           String
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  userId Int
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items  OrderItem[]
+}
+
+model OrderItem {
+  id       Int    @id @default(autoincrement())
+  title    String
+  price    Float
+  quantity Int
+  image    String?
+
+  orderId Int
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId Int?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+}
