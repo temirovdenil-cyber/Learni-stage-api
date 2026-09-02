@@ -40,36 +40,40 @@ const register = async (req, res) => {
 
     if (password.length < 6) {
       return res.status(400).json({
-        message: "Le mot de passe doit contenir au moins 6 caractères.",
+        message:
+          "Le mot de passe doit contenir au moins 6 caractères.",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = email
+      .trim()
+      .toLowerCase();
 
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        email: {
-          equals: normalizedEmail,
-          mode: "insensitive",
+    const existingUser =
+      await prisma.user.findUnique({
+        where: {
+          email: normalizedEmail,
         },
-      },
-    });
+      });
 
     if (existingUser) {
       return res.status(409).json({
-        message: "Un compte existe déjà avec cette adresse email.",
+        message:
+          "Un compte existe déjà avec cette adresse email.",
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        name: name.trim(),
-        email: normalizedEmail,
-        password: hashedPassword,
-      },
-    });
+    const user =
+      await prisma.user.create({
+        data: {
+          name: name.trim(),
+          email: normalizedEmail,
+          password: hashedPassword,
+        },
+      });
 
     const token = createToken(user);
 
@@ -84,10 +88,11 @@ const register = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
+    console.error("REGISTER ERROR:", error);
 
     return res.status(500).json({
-      message: "Erreur lors de la création du compte.",
+      message:
+        "Erreur lors de la création du compte.",
     });
   }
 };
@@ -98,46 +103,39 @@ const login = async (req, res) => {
 
     if (!email || !password) {
       return res.status(400).json({
-        message: "Email et mot de passe obligatoires.",
+        message:
+          "Email et mot de passe obligatoires.",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = email
+      .trim()
+      .toLowerCase();
 
-    const user = await prisma.user.findFirst({
-      where: {
-        email: {
-          equals: normalizedEmail,
-          mode: "insensitive",
+    const user =
+      await prisma.user.findUnique({
+        where: {
+          email: normalizedEmail,
         },
-      },
-    });
+      });
 
     if (!user) {
       return res.status(401).json({
-        message: "Email ou mot de passe incorrect.",
+        message:
+          "Email ou mot de passe incorrect.",
       });
     }
 
-    const validPassword = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const validPassword =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
 
     if (!validPassword) {
       return res.status(401).json({
-        message: "Email ou mot de passe incorrect.",
-      });
-    }
-
-    if (user.email !== normalizedEmail) {
-      await prisma.user.update({
-        where: {
-          id: user.id,
-        },
-        data: {
-          email: normalizedEmail,
-        },
+        message:
+          "Email ou mot de passe incorrect.",
       });
     }
 
@@ -149,15 +147,16 @@ const login = async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
-        email: normalizedEmail,
+        email: user.email,
         role: user.role,
       },
     });
   } catch (error) {
-    console.error(error);
+    console.error("LOGIN ERROR:", error);
 
     return res.status(500).json({
-      message: "Erreur lors de la connexion.",
+      message:
+        "Erreur lors de la connexion.",
     });
   }
 };
@@ -168,20 +167,21 @@ const forgotPassword = async (req, res) => {
 
     if (!email) {
       return res.status(400).json({
-        message: "Adresse email obligatoire.",
+        message:
+          "Adresse email obligatoire.",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = email
+      .trim()
+      .toLowerCase();
 
-    const user = await prisma.user.findFirst({
-      where: {
-        email: {
-          equals: normalizedEmail,
-          mode: "insensitive",
+    const user =
+      await prisma.user.findUnique({
+        where: {
+          email: normalizedEmail,
         },
-      },
-    });
+      });
 
     const responseMessage =
       "Si un compte existe avec cette adresse email, un lien de réinitialisation a été envoyé.";
@@ -198,7 +198,8 @@ const forgotPassword = async (req, res) => {
       },
     });
 
-    const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetToken =
+      crypto.randomBytes(32).toString("hex");
 
     const tokenHash = crypto
       .createHash("sha256")
@@ -211,23 +212,27 @@ const forgotPassword = async (req, res) => {
 
     await prisma.resetToken.create({
       data: {
-        token: tokenHash,
+        tokenHash,
         expiresAt,
         userId: user.id,
       },
     });
 
     const frontendUrl =
-      process.env.FRONTEND_URL || "http://localhost:3000";
+      process.env.FRONTEND_URL ||
+      "http://localhost:3000";
 
     const resetUrl =
       `${frontendUrl}/password-reset?token=${resetToken}`;
 
     try {
       await transporter.sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        from:
+          process.env.SMTP_FROM ||
+          process.env.SMTP_USER,
         to: user.email,
-        subject: "Réinitialisation de votre mot de passe MarketFlash",
+        subject:
+          "Réinitialisation de votre mot de passe MarketFlash",
         text:
           `Cliquez sur ce lien pour réinitialiser votre mot de passe : ${resetUrl}`,
         html: `
@@ -243,7 +248,7 @@ const forgotPassword = async (req, res) => {
       });
     } catch (mailError) {
       console.error(
-        "Erreur envoi email :",
+        "MAIL ERROR:",
         mailError
       );
     }
@@ -252,10 +257,14 @@ const forgotPassword = async (req, res) => {
       message: responseMessage,
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "FORGOT PASSWORD ERROR:",
+      error
+    );
 
     return res.status(500).json({
-      message: "Erreur lors de la demande de réinitialisation.",
+      message:
+        "Erreur lors de la demande de réinitialisation.",
     });
   }
 };
@@ -266,13 +275,15 @@ const resetPassword = async (req, res) => {
 
     if (!token || !password) {
       return res.status(400).json({
-        message: "Token et nouveau mot de passe obligatoires.",
+        message:
+          "Token et nouveau mot de passe obligatoires.",
       });
     }
 
     if (password.length < 6) {
       return res.status(400).json({
-        message: "Le mot de passe doit contenir au moins 6 caractères.",
+        message:
+          "Le mot de passe doit contenir au moins 6 caractères.",
       });
     }
 
@@ -281,22 +292,27 @@ const resetPassword = async (req, res) => {
       .update(token)
       .digest("hex");
 
-    const resetToken = await prisma.resetToken.findUnique({
-      where: {
-        token: tokenHash,
-      },
-      include: {
-        user: true,
-      },
-    });
+    const resetToken =
+      await prisma.resetToken.findUnique({
+        where: {
+          tokenHash,
+        },
+        include: {
+          user: true,
+        },
+      });
 
     if (!resetToken) {
       return res.status(400).json({
-        message: "Lien de réinitialisation invalide.",
+        message:
+          "Lien de réinitialisation invalide.",
       });
     }
 
-    if (resetToken.expiresAt < new Date()) {
+    if (
+      resetToken.expiresAt <
+      new Date()
+    ) {
       await prisma.resetToken.delete({
         where: {
           id: resetToken.id,
@@ -304,11 +320,13 @@ const resetPassword = async (req, res) => {
       });
 
       return res.status(400).json({
-        message: "Le lien de réinitialisation a expiré.",
+        message:
+          "Le lien de réinitialisation a expiré.",
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
 
     await prisma.$transaction([
       prisma.user.update({
@@ -328,13 +346,18 @@ const resetPassword = async (req, res) => {
     ]);
 
     return res.status(200).json({
-      message: "Mot de passe modifié avec succès.",
+      message:
+        "Mot de passe modifié avec succès.",
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "RESET PASSWORD ERROR:",
+      error
+    );
 
     return res.status(500).json({
-      message: "Erreur lors de la réinitialisation du mot de passe.",
+      message:
+        "Erreur lors de la réinitialisation du mot de passe.",
     });
   }
 };
