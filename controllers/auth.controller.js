@@ -1,5 +1,5 @@
 const prisma = require("../lib/prisma");
-const argon2 = require("argon2");
+const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
@@ -30,9 +30,7 @@ const transporter = nodemailer.createTransport({
 
 const register = async (req, res) => {
   try {
-    const name = req.body.name?.trim();
-    const email = req.body.email?.trim().toLowerCase();
-    const password = req.body.password;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -46,33 +44,30 @@ const register = async (req, res) => {
       });
     }
 
-    const existingUser = await prisma.user.findUnique({
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await prisma.user.findFirst({
       where: {
-        email,
+        email: {
+          equals: normalizedEmail,
+          mode: "insensitive",
+        },
       },
     });
 
     if (existingUser) {
       return res.status(409).json({
-        message: "Un compte existe déjà avec cet email.",
+        message: "Un compte existe déjà avec cette adresse email.",
       });
     }
 
-    const hashedPassword = await argon2.hash(password);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
       data: {
-        name,
-        email,
+        name: name.trim(),
+        email: normalizedEmail,
         password: hashedPassword,
-        role: "USER",
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
       },
     });
 
@@ -81,7 +76,12 @@ const register = async (req, res) => {
     return res.status(201).json({
       message: "Compte créé avec succès.",
       token,
-      user,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     });
   } catch (error) {
     console.error(error);
@@ -94,8 +94,7 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const email = req.body.email?.trim().toLowerCase();
-    const password = req.body.password;
+    const { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -103,9 +102,14 @@ const login = async (req, res) => {
       });
     }
 
-    const user = await prisma.user.findUnique({
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findFirst({
       where: {
-        email,
+        email: {
+          equals: normalizedEmail,
+          mode: "insensitive",
+        },
       },
     });
 
@@ -115,22 +119,25 @@ const login = async (req, res) => {
       });
     }
 
-    let validPassword = false;
+    const validPassword = await bcrypt.compare(
+      password,
+      user.password
+    );
 
-    try {
-      validPassword = await argon2.verify(
-        user.password,
-        password
-      );
-    } catch {
+    if (!validPassword) {
       return res.status(401).json({
         message: "Email ou mot de passe incorrect.",
       });
     }
 
-    if (!validPassword) {
-      return res.status(401).json({
-        message: "Email ou mot de passe incorrect.",
+    if (user.email !== normalizedEmail) {
+      await prisma.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          email: normalizedEmail,
+        },
       });
     }
 
@@ -142,7 +149,7 @@ const login = async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
-        email: user.email,
+        email: normalizedEmail,
         role: user.role,
       },
     });
@@ -157,24 +164,31 @@ const login = async (req, res) => {
 
 const forgotPassword = async (req, res) => {
   try {
-    const email = req.body.email?.trim().toLowerCase();
+    const { email } = req.body;
 
     if (!email) {
       return res.status(400).json({
-        message: "Email obligatoire.",
+        message: "Adresse email obligatoire.",
       });
     }
 
-    const user = await prisma.user.findUnique({
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findFirst({
       where: {
-        email,
+        email: {
+          equals: normalizedEmail,
+          mode: "insensitive",
+        },
       },
     });
 
+    const responseMessage =
+      "Si un compte existe avec cette adresse email, un lien de réinitialisation a été envoyé.";
+
     if (!user) {
       return res.status(200).json({
-        message:
-          "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.",
+        message: responseMessage,
       });
     }
 
@@ -184,71 +198,75 @@ const forgotPassword = async (req, res) => {
       },
     });
 
-    const token = crypto.randomBytes(32).toString("hex");
+    const resetToken = crypto.randomBytes(32).toString("hex");
 
     const tokenHash = crypto
       .createHash("sha256")
-      .update(token)
+      .update(resetToken)
       .digest("hex");
+
+    const expiresAt = new Date(
+      Date.now() + 60 * 60 * 1000
+    );
 
     await prisma.resetToken.create({
       data: {
-        tokenHash,
+        token: tokenHash,
+        expiresAt,
         userId: user.id,
-        expiresAt: new Date(
-          Date.now() + 30 * 60 * 1000
-        ),
       },
     });
 
-    const resetUrl =
-      `${process.env.FRONTEND_URL}/password-reset?token=${token}`;
+    const frontendUrl =
+      process.env.FRONTEND_URL || "http://localhost:3000";
 
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to: user.email,
-      subject: "Réinitialisation de votre mot de passe MarketFlash",
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:30px">
-          <h2 style="color:#17212B">Réinitialiser votre mot de passe</h2>
-          <p>Bonjour ${user.name},</p>
-          <p>Vous avez demandé la réinitialisation de votre mot de passe MarketFlash.</p>
-          <p>Ce lien est valable pendant 30 minutes.</p>
-          <a
-            href="${resetUrl}"
-            style="display:inline-block;background:#F5A623;color:#17212B;padding:14px 22px;border-radius:8px;text-decoration:none;font-weight:bold"
-          >
-            Réinitialiser mon mot de passe
-          </a>
-          <p style="margin-top:25px;color:#667085;font-size:13px">
-            Si vous n'avez pas demandé cette modification, ignorez cet email.
+    const resetUrl =
+      `${frontendUrl}/password-reset?token=${resetToken}`;
+
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: user.email,
+        subject: "Réinitialisation de votre mot de passe MarketFlash",
+        text:
+          `Cliquez sur ce lien pour réinitialiser votre mot de passe : ${resetUrl}`,
+        html: `
+          <h2>Réinitialisation du mot de passe</h2>
+          <p>Vous avez demandé à réinitialiser votre mot de passe MarketFlash.</p>
+          <p>
+            <a href="${resetUrl}">
+              Réinitialiser mon mot de passe
+            </a>
           </p>
-        </div>
-      `,
-    });
+          <p>Ce lien expire dans 1 heure.</p>
+        `,
+      });
+    } catch (mailError) {
+      console.error(
+        "Erreur envoi email :",
+        mailError
+      );
+    }
 
     return res.status(200).json({
-      message:
-        "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.",
+      message: responseMessage,
     });
   } catch (error) {
     console.error(error);
 
     return res.status(500).json({
-      message:
-        "Impossible d'envoyer le lien de réinitialisation.",
+      message: "Erreur lors de la demande de réinitialisation.",
     });
   }
 };
 
 const resetPassword = async (req, res) => {
   try {
-    const token = req.body.token;
-    const password = req.body.password;
+    const { token, password } = req.body;
 
     if (!token || !password) {
       return res.status(400).json({
-        message: "Token et mot de passe obligatoires.",
+        message: "Token et nouveau mot de passe obligatoires.",
       });
     }
 
@@ -265,29 +283,32 @@ const resetPassword = async (req, res) => {
 
     const resetToken = await prisma.resetToken.findUnique({
       where: {
-        tokenHash,
+        token: tokenHash,
+      },
+      include: {
+        user: true,
       },
     });
 
-    if (
-      !resetToken ||
-      resetToken.expiresAt < new Date()
-    ) {
-      if (resetToken) {
-        await prisma.resetToken.delete({
-          where: {
-            id: resetToken.id,
-          },
-        });
-      }
-
+    if (!resetToken) {
       return res.status(400).json({
-        message:
-          "Ce lien de réinitialisation est invalide ou expiré.",
+        message: "Lien de réinitialisation invalide.",
       });
     }
 
-    const hashedPassword = await argon2.hash(password);
+    if (resetToken.expiresAt < new Date()) {
+      await prisma.resetToken.delete({
+        where: {
+          id: resetToken.id,
+        },
+      });
+
+      return res.status(400).json({
+        message: "Le lien de réinitialisation a expiré.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     await prisma.$transaction([
       prisma.user.update({
@@ -307,15 +328,13 @@ const resetPassword = async (req, res) => {
     ]);
 
     return res.status(200).json({
-      message:
-        "Votre mot de passe a été modifié avec succès.",
+      message: "Mot de passe modifié avec succès.",
     });
   } catch (error) {
     console.error(error);
 
     return res.status(500).json({
-      message:
-        "Impossible de réinitialiser le mot de passe.",
+      message: "Erreur lors de la réinitialisation du mot de passe.",
     });
   }
 };

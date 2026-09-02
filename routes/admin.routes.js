@@ -1,22 +1,20 @@
 const express = require("express");
-const auth = require("../middleware/auth");
-const admin = require("../middleware/admin");
-const adminController = require("../controllers/admin.controller");
+
+const {
+  getDashboard,
+  getOrders,
+  getUsers,
+} = require("../controllers/admin.controller");
+
+const {
+  getAdminProducts,
+} = require("../controllers/product.controller");
 
 const router = express.Router();
 
-router.get(
-  "/admin/dashboard",
-  auth,
-  admin,
-  adminController.getDashboard
-);
-
-router.get(
-  "/admin/users",
-  auth,
-  admin,
-  adminController.getUsers
-);
+router.get("/admin/dashboard", getDashboard);
+router.get("/admin/orders", getOrders);
+router.get("/admin/products", getAdminProducts);
+router.get("/admin/users", getUsers);
 
 module.exports = router;

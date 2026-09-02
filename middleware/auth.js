@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
+const prisma = require("../lib/prisma");
 
-const auth = (req, res, next) => {
+const auth = async (req, res, next) => {
   const authorization = req.headers.authorization;
 
   if (!authorization) {
@@ -20,19 +21,40 @@ const auth = (req, res, next) => {
     });
   }
 
-  const token = parts[1];
-
   try {
     const decoded = jwt.verify(
-      token,
+      parts[1],
       process.env.JWT_SECRET
     );
 
-    req.user = {
-      id: decoded.id,
-      email: decoded.email,
-      role: decoded.role,
-    };
+    const userId = Number(
+      decoded.id ?? decoded.userId
+    );
+
+    if (!Number.isInteger(userId)) {
+      return res.status(401).json({
+        message: "Token invalide.",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        message: "Utilisateur introuvable.",
+      });
+    }
+
+    req.user = user;
 
     next();
   } catch (error) {

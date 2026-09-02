@@ -30,6 +30,12 @@ const getProduct = async (req, res) => {
   try {
     const id = Number(req.params.id);
 
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        message: "Identifiant de produit invalide.",
+      });
+    }
+
     const product = await prisma.product.findUnique({
       where: {
         id,
@@ -85,6 +91,12 @@ const getMyProduct = async (req, res) => {
   try {
     const id = Number(req.params.id);
 
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        message: "Identifiant de produit invalide.",
+      });
+    }
+
     const product = await prisma.product.findFirst({
       where: {
         id,
@@ -121,26 +133,39 @@ const createProduct = async (req, res) => {
     } = req.body;
 
     if (
-      !title ||
-      !description ||
-      !price ||
-      !category ||
-      !condition ||
-      !city
+      !title?.trim() ||
+      !description?.trim() ||
+      price === undefined ||
+      price === null ||
+      price === "" ||
+      !category?.trim() ||
+      !condition?.trim() ||
+      !city?.trim()
     ) {
       return res.status(400).json({
         message: "Tous les champs sont obligatoires.",
       });
     }
 
+    const numericPrice = Number(price);
+
+    if (
+      Number.isNaN(numericPrice) ||
+      numericPrice < 0
+    ) {
+      return res.status(400).json({
+        message: "Le prix est invalide.",
+      });
+    }
+
     const product = await prisma.product.create({
       data: {
-        title,
-        description,
-        price: Number(price),
-        category,
-        condition,
-        city,
+        title: title.trim(),
+        description: description.trim(),
+        price: numericPrice,
+        category: category.trim(),
+        condition: condition.trim(),
+        city: city.trim(),
         image: image || null,
         userId: req.user.id,
       },
@@ -162,6 +187,12 @@ const createProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const id = Number(req.params.id);
+
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        message: "Identifiant de produit invalide.",
+      });
+    }
 
     const product = await prisma.product.findUnique({
       where: {
@@ -194,17 +225,33 @@ const updateProduct = async (req, res) => {
       image,
     } = req.body;
 
+    const numericPrice = Number(price);
+
+    if (
+      !title?.trim() ||
+      !description?.trim() ||
+      Number.isNaN(numericPrice) ||
+      numericPrice < 0 ||
+      !category?.trim() ||
+      !condition?.trim() ||
+      !city?.trim()
+    ) {
+      return res.status(400).json({
+        message: "Les informations du produit sont invalides.",
+      });
+    }
+
     const updatedProduct = await prisma.product.update({
       where: {
         id,
       },
       data: {
-        title,
-        description,
-        price: Number(price),
-        category,
-        condition,
-        city,
+        title: title.trim(),
+        description: description.trim(),
+        price: numericPrice,
+        category: category.trim(),
+        condition: condition.trim(),
+        city: city.trim(),
         image: image || product.image,
       },
     });
@@ -225,6 +272,12 @@ const updateProduct = async (req, res) => {
 const deleteProduct = async (req, res) => {
   try {
     const id = Number(req.params.id);
+
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        message: "Identifiant de produit invalide.",
+      });
+    }
 
     const product = await prisma.product.findUnique({
       where: {

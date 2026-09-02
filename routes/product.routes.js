@@ -1,12 +1,10 @@
 const express = require("express");
 const productController = require("../controllers/product.controller");
 const auth = require("../middleware/auth");
-const admin = require("../middleware/admin");
 
 const router = express.Router();
 
 router.get("/products", productController.getProducts);
-router.get("/products/:id", productController.getProduct);
 
 router.get(
   "/my-products",
@@ -19,6 +17,8 @@ router.get(
   auth,
   productController.getMyProduct
 );
+
+router.get("/products/:id", productController.getProduct);
 
 router.post(
   "/products",
@@ -36,13 +36,6 @@ router.delete(
   "/products/:id",
   auth,
   productController.deleteProduct
-);
-
-router.get(
-  "/admin/products",
-  auth,
-  admin,
-  productController.getAdminProducts
 );
 
 module.exports = router;
